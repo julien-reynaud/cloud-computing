@@ -1,0 +1,67 @@
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.75"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+resource "random_id" "suffix" {
+  byte_length = 6
+}
+
+
+#Resource Group
+module "resource_group" {
+  source = "./modules/resource_group"
+  resource_group_name = "Cloud-computing-project"
+  location            = var.location
+  suffix             = random_id.suffix.hex
+}
+
+#Virtual Network
+module "virtual_network" {
+  source              = "./modules/virtual_network"
+  resource_group_name = module.resource_group.name
+  location            = var.location
+  vnet_name           = "vnet-10-0-0-0-16"
+  address_space       = "10.0.0.0/16"
+}
+
+#Database
+module "database" {
+  source              = "./modules/database"
+  database_name       = "counter"
+  resource_group_name = module.resource_group.name
+  location            = var.location
+  admin_user          = "adminuser"
+  admin_password      = "P@ssword123"
+  subnet_id           = module.virtual_network.subnet_id
+  suffix             = random_id.suffix.hex
+}
+
+#web App
+module "web_app" {
+  source = "./modules/web_app"
+
+  # App Service name must contain only alphanumeric and dashes (no underscores)
+  name                = "web-app-${random_id.suffix.hex}"
+  resource_group_name = module.resource_group.name  
+  location            = var.location
+
+  sku_tier   = "Standard"
+  sku_size   = "S1"
+  runtime_stack = "NODE|18-lts"
+
+  app_settings = {
+    "DATABASE_SERVER"   = module.database.server_name
+    "DATABASE_NAME"     = module.database.database_name
+    "DATABASE_USER"     = "adminuser"
+    "DATABASE_PASSWORD" = "P@ssword123"
+  }
+}
